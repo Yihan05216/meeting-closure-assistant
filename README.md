@@ -2,6 +2,8 @@
 
 **[Live Demo — Try Meeting Closure Assistant](https://meeting-closure-assistant-pizgoc8uuigjgthlpefnp2.streamlit.app/)**
 
+**[Product Case Study (PDF)](docs/case-study.pdf)**
+
 An agenda-aware AI meeting assistant that helps teams check whether important meeting outcomes are sufficiently closed or appropriately handed off before a meeting ends. It evaluates progress against the meeting’s purpose, alongside a structured summary of what was discussed.
 
 ## Problem
