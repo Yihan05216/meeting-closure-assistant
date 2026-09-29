@@ -222,6 +222,38 @@ def save_custom_meeting_type():
 
 st.header("1. Meeting Context")
 
+st.caption("Try a sample product launch meeting, or enter your own meeting details below.")
+if st.button("Load Example Meeting"):
+    # Fictional sample data for demonstrating the existing analysis workflow.
+    st.session_state.update({
+        "meeting_type": "Product / Decision Meeting",
+        "meeting_goal": "Decide whether to launch the AI assistant beta next Friday, confirm the remaining launch tasks and their owners, and identify any issues that must be clarified before the meeting ends.",
+        "agenda": """1. Review beta launch readiness.
+2. Confirm the beta launch date and conditions.
+3. Assign owners and deadlines for remaining tasks.
+4. Discuss beta pricing and longer-term pricing strategy.""",
+        "transcript": """Alice: Our goal today is to decide whether we can launch the AI assistant beta next Friday. Let's start with readiness.
+
+Bob: The core features are implemented. I will finish the final regression testing on Thursday afternoon and share the results. If the tests pass, the product should be ready for Friday.
+
+Alice: Great. Are we all comfortable targeting next Friday, provided the final tests pass?
+
+Carol: Yes. I can finish the landing page by Wednesday and prepare the user feedback tracker by Friday.
+
+Alice: Agreed. Let's target next Friday, conditional on successful testing on Thursday.
+
+Carol: What about pricing?
+
+Alice: The invited beta will be free. We don't need to finalize long-term pricing today. I will collect initial feedback and prepare a pricing recommendation for next Monday's meeting.
+
+Bob: One question: if Thursday's tests fail, who will decide whether we postpone the launch?
+
+Alice: We haven't assigned anyone to make that decision yet. We need to clarify this before we wrap up.
+
+Carol: Agreed. Everything else has a clear next step."""
+    })
+st.caption("This example is fictional and is not a real meeting record.")
+
 meeting_type = st.selectbox(
     "Meeting Type",
     [
