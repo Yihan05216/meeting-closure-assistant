@@ -7,6 +7,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from meeting_templates import MEETING_TEMPLATES
+from audio_demo import render_audio_demo
+from live_review import render_live_review
+from deployment_support import read_secret, reserve_analysis
 from closure_workflow import (
     reset_closure, reset_meeting, sync_inputs, collect_blockers,
     save_action, save_exception, unacknowledged_blockers, confirm_end, remaining_risks
@@ -30,12 +33,16 @@ st.caption(
 # DeepSeek Client
 # -----------------------------
 
+deepseek_key = read_secret("DEEPSEEK_API_KEY")
 client = OpenAI(
-    api_key=os.environ.get("DEEPSEEK_API_KEY"),
+    api_key=deepseek_key,
     base_url="https://api.deepseek.com",
     # Avoid incompatible optional Brotli decoders; does not change model behavior.
-    default_headers={"Accept-Encoding": "identity"}
-)
+    default_headers={"Accept-Encoding": "identity"},
+    max_retries=0
+) if deepseek_key else None
+if client is None:
+    st.warning("DeepSeek is not configured. The app owner needs to set DEEPSEEK_API_KEY in Streamlit Secrets.")
 
 
 # -----------------------------
@@ -46,7 +53,7 @@ class MeetingAnalysisError(ValueError):
     """An unusable model response with a user-facing explanation."""
 
 
-def analyze_meeting_with_ai(meeting_type, meeting_goal, agenda, transcript, required_roles=None, checks=None):
+def analyze_meeting_with_ai(meeting_type, meeting_goal, agenda, transcript, required_roles=None, checks=None, live_context=None):
     required_roles = required_roles or []
     checks = checks or []
 
@@ -194,7 +201,14 @@ Meeting Transcript:
 Analyze this meeting and return the result as JSON.
 """
 
-    response = client.chat.completions.create(
+    if live_context is not None:
+        from live_review import LIVE_PROMPT
+        system_prompt += "\n" + LIVE_PROMPT
+        user_prompt += "\nLive review context (host records are not transcript evidence):\n" + json.dumps(live_context, ensure_ascii=False)
+    if client is None:
+        raise MeetingAnalysisError("DeepSeek is not configured.")
+    request_client = client.with_options(max_retries=0, timeout=90) if live_context is not None else client
+    response = request_client.chat.completions.create(
         model="deepseek-flash",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -307,6 +321,9 @@ def save_custom_meeting_type():
 
 
 def load_example_meeting():
+    if st.session_state.get("input_mode") == "Demo Audio Meeting":
+        st.session_state["input_mode"] = "Manual Transcript"
+        switch_input_mode()
     reset_meeting(st.session_state)
     st.session_state["meeting_template"] = "Product Launch Decision Meeting"
     st.session_state.update(MEETING_TEMPLATES["Product Launch Decision Meeting"])
@@ -342,6 +359,20 @@ Carol: Agreed. Everything else has a clear next step."""
     })
 
 
+def switch_input_mode():
+    previous = st.session_state.get("active_input_mode", "Manual Transcript")
+    drafts = st.session_state.setdefault("transcript_drafts", {})
+    drafts[previous] = st.session_state.get("transcript", "")
+    current = st.session_state["input_mode"]
+    st.session_state["transcript"] = drafts.get(current, "")
+    st.session_state["active_input_mode"] = current
+    reset_meeting(st.session_state)
+
+
+st.radio("Transcript Mode", ["Manual Transcript", "Demo Audio Meeting"],
+         key="input_mode", on_change=switch_input_mode, horizontal=True)
+
+
 with st.expander("How to Test / Mock & Limitations"):
     st.markdown("""
 1. Load a fictional example or select a template and enter your own meeting.
@@ -350,7 +381,7 @@ with st.expander("How to Test / Mock & Limitations"):
    and explicitly confirm whether to end the meeting.
 
 Only the example meeting data is fictional. Analysis uses the real DeepSeek API.
-Transcripts must be typed or pasted manually. Data is kept only in this Streamlit
+Use manual notes or play the fictional TTS demo for real Groq ASR. Different TTS voices do not provide speaker identification. Data is kept only in this Streamlit
 session; persistence is not guaranteed. AI judgments may be wrong and require
 host review. Host actions and exceptions do not change the AI's conclusions.
 """)
@@ -430,6 +461,9 @@ st.header("2. Meeting Transcript")
 if st.session_state["discussion_requested"]:
     st.info("Continue the discussion and edit the transcript below. Then click 'Prepare to End Meeting' manually. No API request has been made.")
 
+if st.session_state["input_mode"] == "Demo Audio Meeting":
+    render_audio_demo(st.session_state)
+
 transcript = st.text_area(
     "Paste meeting notes or transcript",
     key="transcript",
@@ -493,6 +527,12 @@ if st.button("Prepare to End Meeting", type="primary"):
             + ", ".join(missing_fields) + "."
         )
 
+    elif st.session_state["input_mode"] == "Demo Audio Meeting":
+        st.session_state["live_force"] = True
+
+    elif (limit_message := reserve_analysis(st.session_state, {"mode": "manual", "inputs": current_inputs}, deduplicate=False)):
+        st.warning(limit_message)
+
     else:
 
         with st.spinner("Checking whether the meeting's important outcomes are resolved..."):
@@ -521,6 +561,9 @@ if st.button("Prepare to End Meeting", type="primary"):
                 # Log the exception category only; API errors can contain sensitive data.
                 logger.error("Meeting analysis failed (%s)", type(e).__name__)
                 st.error("The analysis is unavailable right now. Please try again shortly.")
+
+if st.session_state["input_mode"] == "Demo Audio Meeting":
+    render_live_review(st.session_state, current_inputs, analyze_meeting_with_ai)
 
 if st.session_state["analysis_result"] is not None:
     stale = current_inputs != st.session_state["analyzed_inputs"]

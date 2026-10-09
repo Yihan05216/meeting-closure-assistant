@@ -15,6 +15,8 @@ def reset_closure(state):
 
 
 def reset_meeting(state):
+    state.pop("live_review_state", None)
+    state.pop("live_force", None)
     reset_closure(state)
     state["analysis_result"] = None
     state["analyzed_inputs"] = None
